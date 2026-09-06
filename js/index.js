@@ -54,7 +54,7 @@ const dom = {
 
 window.SolaraDom = dom;
 
-const isMobileView = Boolean(window.__SOLARA_IS_MOBILE);
+const isMobileView = Boolean(window.__网罗音乐_IS_MOBILE);
 
 const mobileBridge = window.SolaraMobileBridge || {};
 mobileBridge.handlers = mobileBridge.handlers || {};

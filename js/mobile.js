@@ -1,5 +1,5 @@
 (function () {
-    if (!window.__SOLARA_IS_MOBILE) {
+    if (!window.__网罗音乐_IS_MOBILE) {
         return;
     }
 
