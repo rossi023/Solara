@@ -381,6 +381,10 @@ function buildAudioProxyUrl(url) {
             return `${API.baseUrl}?target=${encodeURIComponent(parsedUrl.toString())}`;
         }
 
+        if (parsedUrl.protocol === "http:" && /(^|\.)bilivideo\.com$|(^|\.)hdslb\.com$/i.test(parsedUrl.hostname)) {
+            return `${API.baseUrl}?target=${encodeURIComponent(parsedUrl.toString())}`;
+        }
+
         return parsedUrl.toString();
     } catch (error) {
         console.warn("无法解析音频地址，跳过代理", error);
@@ -388,10 +392,23 @@ function buildAudioProxyUrl(url) {
     }
 }
 
+function preferHttpsUrl(url) {
+    if (!url || typeof url !== "string") return url;
+    try {
+        const parsedUrl = new URL(url);
+        if (parsedUrl.protocol === "http:") {
+            parsedUrl.protocol = "https:";
+        }
+        return parsedUrl.toString();
+    } catch {
+        return url;
+    }
+}
+
 const SOURCE_OPTIONS = [
     { value: "netease", label: "网易云音乐" },
-    { value: "kuwo", label: "酷我音乐" },
-    { value: "joox", label: "JOOX音乐" }
+    { value: "joox", label: "JOOX音乐" },
+    { value: "bilibili", label: "Bilibili" }
 ];
 
 function normalizeSource(value) {
@@ -509,7 +526,7 @@ const API = {
             return data.map(song => ({
                 id: song.id,
                 name: song.name,
-                artist: song.artist,
+                artist: Array.isArray(song.artist) ? song.artist.join(" / ") : (song.artist || ""),
                 album: song.album,
                 pic_id: song.pic_id,
                 url_id: song.url_id,
@@ -2858,7 +2875,8 @@ async function playSong(song, options = {}) {
         const audioData = await API.fetchJson(audioUrl);
 
         if (!audioData || !audioData.url) {
-            throw new Error('无法获取音频播放地址');
+            const sourceName = song.source === 'kuwo' ? '酷我' : song.source === 'joox' ? 'JOOX' : '网易云';
+            throw new Error(`无法获取音频播放地址（${sourceName}音源）`);
         }
 
         const originalAudioUrl = audioData.url;
