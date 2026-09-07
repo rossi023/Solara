@@ -1,6 +1,4 @@
 const API_BASE_URL = "https://music-api.gdstudio.xyz/api.php";
-const KUWO_HOST_PATTERN = /(^|\.)kuwo\.cn$/i;
-const BILIBILI_HOST_PATTERN = /(^|\.)bilivideo\.com$|(^|\.)hdslb\.com$/i;
 const SAFE_RESPONSE_HEADERS = ["content-type", "cache-control", "accept-ranges", "content-length", "content-range", "etag", "last-modified", "expires"];
 
 function createCorsHeaders(init?: Headers): Headers {
@@ -29,100 +27,6 @@ function handleOptions(): Response {
       "Access-Control-Max-Age": "86400",
     },
   });
-}
-
-function isAllowedKuwoHost(hostname: string): boolean {
-  if (!hostname) return false;
-  return KUWO_HOST_PATTERN.test(hostname);
-}
-
-function isAllowedBilibiliHost(hostname: string): boolean {
-  if (!hostname) return false;
-  return BILIBILI_HOST_PATTERN.test(hostname);
-}
-
-function normalizeKuwoUrl(rawUrl: string): URL | null {
-  try {
-    const parsed = new URL(rawUrl);
-    if (!isAllowedKuwoHost(parsed.hostname)) {
-      return null;
-    }
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return null;
-    }
-    parsed.protocol = "http:";
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-async function proxyKuwoAudio(targetUrl: string, request: Request): Promise<Response> {
-  const normalized = normalizeKuwoUrl(targetUrl);
-  if (!normalized) {
-    return new Response("Invalid target", { status: 400 });
-  }
-
-  const init: RequestInit = {
-    method: request.method,
-    headers: {
-      "User-Agent": request.headers.get("User-Agent") ?? "Mozilla/5.0",
-      "Referer": "https://www.kuwo.cn/",
-    },
-  };
-
-  const rangeHeader = request.headers.get("Range");
-  if (rangeHeader) {
-    (init.headers as Record<string, string>)["Range"] = rangeHeader;
-  }
-
-  const upstream = await fetch(normalized.toString(), init);
-  const headers = createCorsHeaders(upstream.headers);
-  if (!headers.has("Cache-Control")) {
-    headers.set("Cache-Control", "public, max-age=3600");
-  }
-
-  return new Response(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers,
-  });
-}
-
-async function proxyBilibiliAudio(targetUrl: string, request: Request): Promise<Response> {
-  try {
-    const parsed = new URL(targetUrl);
-    if (!isAllowedBilibiliHost(parsed.hostname)) {
-      return new Response("Invalid bilibili host", { status: 400 });
-    }
-
-    const init: RequestInit = {
-      method: request.method,
-      headers: {
-        "User-Agent": request.headers.get("User-Agent") ?? "Mozilla/5.0",
-        "Referer": "https://www.bilibili.com/",
-      },
-    };
-
-    const rangeHeader = request.headers.get("Range");
-    if (rangeHeader) {
-      (init.headers as Record<string, string>)["Range"] = rangeHeader;
-    }
-
-    const upstream = await fetch(parsed.toString(), init);
-    const headers = createCorsHeaders(upstream.headers);
-    if (!headers.has("Cache-Control")) {
-      headers.set("Cache-Control", "public, max-age=3600");
-    }
-
-    return new Response(upstream.body, {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers,
-    });
-  } catch {
-    return new Response("Invalid bilibili URL", { status: 400 });
-  }
 }
 
 async function proxyApiRequest(url: URL, request: Request): Promise<Response> {
@@ -167,17 +71,6 @@ export async function onRequest({ request }: { request: Request }): Promise<Resp
   }
 
   const url = new URL(request.url);
-  const target = url.searchParams.get("target");
-
-  if (target) {
-    if (isAllowedKuwoHost(new URL(target).hostname)) {
-      return proxyKuwoAudio(target, request);
-    }
-    if (isAllowedBilibiliHost(new URL(target).hostname)) {
-      return proxyBilibiliAudio(target, request);
-    }
-    return new Response("Invalid target host", { status: 400 });
-  }
 
   return proxyApiRequest(url, request);
 }

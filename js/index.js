@@ -377,14 +377,6 @@ function buildAudioProxyUrl(url) {
             return parsedUrl.toString();
         }
 
-        if (parsedUrl.protocol === "http:" && /(^|\.)kuwo\.cn$/i.test(parsedUrl.hostname)) {
-            return `${API.baseUrl}?target=${encodeURIComponent(parsedUrl.toString())}`;
-        }
-
-        if (parsedUrl.protocol === "http:" && /(^|\.)bilivideo\.com$|(^|\.)hdslb\.com$/i.test(parsedUrl.hostname)) {
-            return `${API.baseUrl}?target=${encodeURIComponent(parsedUrl.toString())}`;
-        }
-
         return parsedUrl.toString();
     } catch (error) {
         console.warn("无法解析音频地址，跳过代理", error);
@@ -407,8 +399,7 @@ function preferHttpsUrl(url) {
 
 const SOURCE_OPTIONS = [
     { value: "netease", label: "网易云音乐" },
-    { value: "joox", label: "JOOX音乐" },
-    { value: "bilibili", label: "Bilibili" }
+    { value: "joox", label: "JOOX音乐" }
 ];
 
 function normalizeSource(value) {
