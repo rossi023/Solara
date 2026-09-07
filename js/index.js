@@ -28,7 +28,6 @@ const dom = {
     currentSongArtist: document.getElementById("currentSongArtist"),
     debugInfo: document.getElementById("debugInfo"),
     playModeBtn: document.getElementById("playModeBtn"),
-    playlistModeBtn: document.getElementById("playlistModeBtn"),
     playPauseBtn: document.getElementById("playPauseBtn"),
     progressBar: document.getElementById("progressBar"),
     currentTimeDisplay: document.getElementById("currentTimeDisplay"),
@@ -1221,7 +1220,7 @@ const playModeTexts = {
 
 const playModeIcons = {
     "list": "fa-repeat",
-    "single": "fa-redo",
+    "single": "fa-repeat",
     "random": "fa-shuffle"
 };
 
@@ -1232,12 +1231,7 @@ function updatePlayModeUI() {
 
     dom.playModeBtn.innerHTML = `<i class="fas ${icon}"></i>`;
     dom.playModeBtn.title = `播放模式: ${text}`;
-
-    if (dom.playlistModeBtn) {
-        dom.playlistModeBtn.innerHTML = `<i class="fas ${icon}"></i>`;
-        dom.playlistModeBtn.title = `播放模式: ${text}`;
-        dom.playlistModeBtn.classList.toggle("active", mode !== "list");
-    }
+    dom.playModeBtn.classList.toggle("single-mode", mode === "single");
 }
 
 // 新增：播放模式切换
@@ -2059,9 +2053,6 @@ function setupInteractions() {
     // 播放模式按钮事件
     updatePlayModeUI();
     dom.playModeBtn.addEventListener("click", togglePlayMode);
-    if (dom.playlistModeBtn) {
-        dom.playlistModeBtn.addEventListener("click", togglePlayMode);
-    }
 
     // 搜索相关事件 - 修复搜索下拉框显示问题
     dom.searchBtn.addEventListener("click", (e) => {

@@ -171,9 +171,6 @@
                     <div class="playlist-header">
                         <div class="playlist-label" aria-hidden="true">播放列表</div>
                         <div class="playlist-actions">
-                            <button class="playlist-mode-btn" id="playlistModeBtn" type="button" title="播放模式">
-                                <i class="fas fa-repeat"></i>
-                            </button>
                             <button class="clear-playlist-btn" id="clearPlaylistBtn" onclick="clearPlaylist()" title="清空播放列表">
                                 <i class="fas fa-trash"></i>
                             </button>
@@ -193,12 +190,12 @@
 
         <div class="controls">
             <div class="transport-controls">
-                <button class="play-mode-btn transport-button transport-button--mode" id="playModeBtn" type="button" title="播放模式">
-                    <i class="fas fa-repeat"></i>
-                </button>
                 <button class="transport-button transport-button--prev" onclick="playPrevious()" type="button" title="上一曲"><i class="fas fa-backward-step"></i></button>
                 <button class="transport-button transport-button--play" id="playPauseBtn" type="button" title="播放 / 暂停"><i class="fas fa-play"></i></button>
                 <button class="transport-button transport-button--next" onclick="playNext()" type="button" title="下一曲"><i class="fas fa-forward-step"></i></button>
+                <button class="transport-button transport-button--mode" id="playModeBtn" type="button" title="播放模式: 列表循环">
+                    <i class="fas fa-repeat"></i>
+                </button>
                 <button class="transport-button transport-button--queue" id="mobileQueueToggle" type="button" title="打开播放列表" aria-label="打开播放列表"><i class="fas fa-bars"></i></button>
             </div>
             <div class="progress-container">

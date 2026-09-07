@@ -667,34 +667,6 @@ html.mobile-view .playlist-label {
     gap: 8px;
 }
 
-/* 播放模式按钮 */
-.playlist-mode-btn {
-    width: 32px;
-    height: 32px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    border: 1px solid var(--border-color);
-    background: var(--component-bg);
-    color: var(--text-secondary-color);
-    cursor: pointer;
-    transition: all 0.25s ease;
-    font-size: 14px;
-}
-
-.playlist-mode-btn:hover {
-    color: var(--primary-color);
-    border-color: var(--primary-color);
-    transform: translateY(-1px);
-}
-
-.playlist-mode-btn.active {
-    color: var(--primary-color);
-    border-color: var(--primary-color);
-    background: rgba(var(--primary-color-rgb, 52, 152, 219), 0.1);
-}
-
 /* 清空播放列表按钮 */
 .clear-playlist-btn {
     width: 32px;
@@ -753,8 +725,7 @@ html.mobile-view .playlist-label {
     width: 100%;
 }
 
-.playlist.empty .clear-playlist-btn,
-.playlist.empty .playlist-mode-btn {
+.playlist.empty .clear-playlist-btn {
     display: none;
 }
 
@@ -997,11 +968,34 @@ html.mobile-view .playlist-label {
 }
 
 html:not(.mobile-view) #playModeBtn {
-    margin-right: 8px;
+    margin-left: 8px;
 }
 
 #mobileQueueToggle {
     display: none;
+}
+
+/* 播放模式按钮 */
+#playModeBtn {
+    position: relative;
+}
+
+#playModeBtn.single-mode::after {
+    content: "1";
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    font-size: 9px;
+    font-weight: 700;
+    color: white;
+    background: var(--primary-color);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
 }
 
 #playPauseBtn {
@@ -1194,40 +1188,6 @@ input[type="range"]:active::-moz-range-thumb {
     height: 0;
     opacity: 0;
     pointer-events: none;
-}
-
-/* 播放模式控制按钮 */
-.play-mode-controls {
-    display: flex;
-    gap: 10px;
-    align-items: center;
-}
-
-.play-mode-btn {
-    background: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 50%;
-    cursor: pointer;
-    font-size: 1.2em;
-    width: 50px;
-    height: 50px;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    transition: all 0.2s ease;
-    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-}
-
-.play-mode-btn:hover {
-    background: var(--primary-color);
-    color: white;
-    transform: translateY(-1px);
-}
-
-.play-mode-btn.active {
-    background: var(--primary-color);
-    color: white;
 }
 
 /* 下载质量选择菜单 - 修复层级和显示问题 */
