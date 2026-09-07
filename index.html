@@ -168,10 +168,17 @@
                 </div>
 
                 <div class="playlist active empty" id="playlist">
-                    <div class="playlist-label" aria-hidden="true">播放列表</div>
-                    <button class="clear-playlist-btn" id="clearPlaylistBtn" onclick="clearPlaylist()" title="清空播放列表">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    <div class="playlist-header">
+                        <div class="playlist-label" aria-hidden="true">播放列表</div>
+                        <div class="playlist-actions">
+                            <button class="playlist-mode-btn" id="playlistModeBtn" type="button" title="播放模式">
+                                <i class="fas fa-repeat"></i>
+                            </button>
+                            <button class="clear-playlist-btn" id="clearPlaylistBtn" onclick="clearPlaylist()" title="清空播放列表">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
                     <div class="playlist-scroll">
                         <div class="playlist-items" id="playlistItems"></div>
                     </div>

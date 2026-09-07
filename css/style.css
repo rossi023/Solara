@@ -639,37 +639,92 @@ body.background-transitioning .background-stage__layer--transition {
 }
 
 .playlist-label {
-    position: absolute;
-    top: 16px;
-    left: 20px;
     color: var(--text-secondary-color);
     font-size: 15px;
     font-weight: 600;
     letter-spacing: 0.08em;
     line-height: 1.2;
-    display: none;
-    pointer-events: none;
-}
-
-html.desktop-view .playlist-label {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-}
-
-html.desktop-view body.dark-mode .playlist-label {
-    color: var(--text-color);
+    opacity: 0.7;
+    font-size: 0.9em;
 }
 
 html.mobile-view .playlist-label {
     display: none;
 }
 
+/* 播放列表头部 */
+.playlist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 12px;
+}
+
+.playlist-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 播放模式按钮 */
+.playlist-mode-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: var(--component-bg);
+    color: var(--text-secondary-color);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-size: 14px;
+}
+
+.playlist-mode-btn:hover {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+    transform: translateY(-1px);
+}
+
+.playlist-mode-btn.active {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+    background: rgba(var(--primary-color-rgb, 52, 152, 219), 0.1);
+}
+
+/* 清空播放列表按钮 */
+.clear-playlist-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    border: 1px solid var(--border-color);
+    background: var(--component-bg);
+    color: var(--text-secondary-color);
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-size: 14px;
+}
+
+.clear-playlist-btn:hover {
+    color: var(--warning-color);
+    border-color: rgba(231, 76, 60, 0.45);
+    transform: translateY(-1px);
+}
+
+.clear-playlist-btn:active {
+    transform: translateY(0);
+}
+
 /* 当播放列表有内容时，调整布局 */
 .playlist:not(.empty) {
     align-items: stretch;
     justify-content: flex-start;
-    padding-top: 56px; /* Provide space for the clear button */
 }
 
 /* 播放列表空状态的提示文本 */
@@ -679,41 +734,6 @@ html.mobile-view .playlist-label {
     font-style: italic;
     opacity: 0.7;
     font-size: 0.9em;
-}
-
-/* 清空播放列表按钮 */
-.clear-playlist-btn {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    width: 40px;
-    height: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    border: 1px solid var(--border-color);
-    background: var(--component-bg);
-    color: var(--text-secondary-color);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
-    cursor: pointer;
-    transition: all 0.25s ease;
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
-    z-index: 1000;
-    font-size: 16px;
-}
-
-.clear-playlist-btn:hover {
-    color: var(--warning-color);
-    border-color: rgba(231, 76, 60, 0.45);
-    box-shadow: 0 10px 25px rgba(231, 76, 60, 0.25);
-    transform: translateY(-2px);
-}
-
-.clear-playlist-btn:active {
-    transform: translateY(0);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
 }
 
 .playlist-scroll {
@@ -733,7 +753,8 @@ html.mobile-view .playlist-label {
     width: 100%;
 }
 
-.playlist.empty .clear-playlist-btn {
+.playlist.empty .clear-playlist-btn,
+.playlist.empty .playlist-mode-btn {
     display: none;
 }
 

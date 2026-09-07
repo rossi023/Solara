@@ -757,7 +757,8 @@ body.mobile-view .lyrics-scroll::-webkit-scrollbar-thumb {
     border-radius: 999px;
 }
 
-body.mobile-view .playlist .clear-playlist-btn {
+body.mobile-view .playlist .clear-playlist-btn,
+body.mobile-view .playlist .playlist-mode-btn {
     display: none;
 }
 
