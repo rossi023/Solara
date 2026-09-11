@@ -700,14 +700,20 @@ body.mobile-view .playlist-items .playlist-item:hover {
 }
 
 body.mobile-view .playlist-items .playlist-item .playlist-item-download,
-body.mobile-view .playlist-items .playlist-item .playlist-item-remove {
+body.mobile-view .playlist-items .playlist-item .playlist-item-remove,
+body.mobile-view .playlist-items .playlist-item .playlist-item-favorite {
     width: 28px;
     height: 28px;
     border-radius: 8px;
 }
 
 body.mobile-view .playlist-items .playlist-item .playlist-item-download {
+    right: 90px;
+}
+
+body.mobile-view .playlist-items .playlist-item .playlist-item-favorite {
     right: 52px;
+    opacity: 1;
 }
 
 body.mobile-view .playlist-items .playlist-item .playlist-item-remove {

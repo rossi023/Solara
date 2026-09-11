@@ -399,7 +399,8 @@ function preferHttpsUrl(url) {
 
 const SOURCE_OPTIONS = [
     { value: "netease", label: "网易云音乐" },
-    { value: "joox", label: "JOOX音乐" }
+    { value: "joox", label: "JOOX音乐" },
+    { value: "kugou", label: "酷狗音乐" }
 ];
 
 function normalizeSource(value) {
@@ -423,6 +424,12 @@ const savedPlaylistSongs = (() => {
     const stored = safeGetLocalStorage("playlistSongs");
     const playlist = parseJSON(stored, []);
     return Array.isArray(playlist) ? playlist : [];
+})();
+
+const savedFavoriteSongs = (() => {
+    const stored = safeGetLocalStorage("favoriteSongs");
+    const favorites = parseJSON(stored, []);
+    return Array.isArray(favorites) ? favorites : [];
 })();
 
 const savedCurrentTrackIndex = (() => {
@@ -453,6 +460,8 @@ const savedSearchSource = (() => {
     return normalizeSource(stored);
 })();
 
+const savedSearchKeyword = safeGetLocalStorage("searchKeyword") || "";
+
 const savedPlaybackTime = (() => {
     const stored = safeGetLocalStorage("currentPlaybackTime");
     const time = Number.parseFloat(stored);
@@ -472,53 +481,61 @@ const savedCurrentPlaylist = (() => {
 
 // API配置 - 修复API地址和请求方式
 const API = {
-    baseUrl: "/proxy",
+    baseUrl: "https://go-music-api.luoxi.workers.dev",
 
     generateSignature: () => {
         return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
     },
 
-    fetchJson: async (url) => {
-        try {
-            const response = await fetch(url, {
-                headers: {
-                    "Accept": "application/json",
-                },
-            });
-
-            if (!response.ok) {
-                throw new Error(`Request failed with status ${response.status}`);
-            }
-
-            const text = await response.text();
+    fetchJson: async (url, options = {}) => {
+        const retries = Number.isInteger(options.retries) ? options.retries : 2;
+        let lastError;
+        for (let attempt = 0; attempt <= retries; attempt += 1) {
+            const controller = new AbortController();
+            const timeout = window.setTimeout(() => controller.abort(), options.timeout || 12000);
             try {
-                return JSON.parse(text);
-            } catch (parseError) {
-                console.warn("JSON parse failed, returning raw text", parseError);
-                return text;
+                const response = await fetch(url, {
+                    signal: controller.signal,
+                    cache: "no-store",
+                    headers: { "Accept": "application/json" },
+                });
+                if (!response.ok) throw new Error(`Request failed with status ${response.status}`);
+                const text = await response.text();
+                try {
+                    return JSON.parse(text);
+                } catch (parseError) {
+                    throw new Error("音乐接口返回了无效数据", { cause: parseError });
+                }
+            } catch (error) {
+                lastError = error;
+                if (attempt < retries) {
+                    await new Promise(resolve => window.setTimeout(resolve, 300 * (attempt + 1)));
+                }
+            } finally {
+                window.clearTimeout(timeout);
             }
-        } catch (error) {
-            console.error("API request error:", error);
-            throw error;
         }
+        console.error("API request error:", lastError);
+        throw lastError || new Error("音乐接口请求失败");
     },
 
     search: async (keyword, source = "netease", count = 20, page = 1) => {
-        const signature = API.generateSignature();
-        const url = `${API.baseUrl}?types=search&source=${source}&name=${encodeURIComponent(keyword)}&count=${count}&pages=${page}&s=${signature}`;
+        const url = `/proxy?types=search&q=${encodeURIComponent(keyword)}&source=${encodeURIComponent(source)}`;
 
         try {
             debugLog(`API请求: ${url}`);
             const data = await API.fetchJson(url);
             debugLog(`API响应: ${JSON.stringify(data).substring(0, 200)}...`);
 
-            if (!Array.isArray(data)) throw new Error("搜索结果格式错误");
+            const songs = Array.isArray(data) ? data : (data?.data?.songs || data?.songs || data?.data);
+            if (!Array.isArray(songs)) throw new Error("搜索结果格式错误");
 
-            return data.map(song => ({
+            return songs.map(song => ({
                 id: song.id,
                 name: song.name,
                 artist: Array.isArray(song.artist) ? song.artist.join(" / ") : (song.artist || ""),
                 album: song.album,
+                album_id: song.album_id,
                 pic_id: song.pic_id,
                 url_id: song.url_id,
                 lyric_id: song.lyric_id,
@@ -552,14 +569,7 @@ const API = {
         limit = Math.max(1, Math.min(200, Math.trunc(limit)) || 50);
         offset = Math.max(0, Math.trunc(offset) || 0);
 
-        const params = new URLSearchParams({
-            types: "playlist",
-            id: playlistId,
-            limit: String(limit),
-            offset: String(offset),
-            s: signature,
-        });
-        const url = `${API.baseUrl}?${params.toString()}`;
+        const url = `/proxy?types=playlist&id=${encodeURIComponent(playlistId)}&limit=${limit}&offset=${offset}&s=${encodeURIComponent(signature)}`;
 
         try {
             const data = await API.fetchJson(url);
@@ -584,18 +594,31 @@ const API = {
     },
 
     getSongUrl: (song, quality = "320") => {
-        const signature = API.generateSignature();
-        return `${API.baseUrl}?types=url&id=${song.id}&source=${song.source || "netease"}&br=${quality}&s=${signature}`;
+        const albumParam = song.source === "kugou" && song.album_id
+            ? `&album_id=${encodeURIComponent(song.album_id)}`
+            : "";
+        const nameParam = song.name ? `&name=${encodeURIComponent(song.name)}` : "";
+        const artistValue = Array.isArray(song.artist) ? song.artist.join(" / ") : song.artist;
+        const artistParam = artistValue ? `&artist=${encodeURIComponent(artistValue)}` : "";
+        return `/proxy?types=audio&id=${encodeURIComponent(song.id)}&source=${encodeURIComponent(song.source || "netease")}&br=${quality}${albumParam}${nameParam}${artistParam}`;
+    },
+
+    getSongUrlDirect: (song, quality = "320") => {
+        const albumParam = song.source === "kugou" && song.album_id
+            ? `&album_id=${encodeURIComponent(song.album_id)}`
+            : "";
+        const nameParam = song.name ? `&name=${encodeURIComponent(song.name)}` : "";
+        const artistValue = Array.isArray(song.artist) ? song.artist.join(" / ") : song.artist;
+        const artistParam = artistValue ? `&artist=${encodeURIComponent(artistValue)}` : "";
+        return `${API.baseUrl}/api/v1/music/url?id=${encodeURIComponent(song.id)}&source=${encodeURIComponent(song.source || "netease")}&br=${quality}${albumParam}${nameParam}${artistParam}`;
     },
 
     getLyric: (song) => {
-        const signature = API.generateSignature();
-        return `${API.baseUrl}?types=lyric&id=${song.lyric_id || song.id}&source=${song.source || "netease"}&s=${signature}`;
+        return `/proxy?types=lyric&id=${encodeURIComponent(song.lyric_id || song.id)}&source=${encodeURIComponent(song.source || "netease")}`;
     },
 
     getPicUrl: (song) => {
-        const signature = API.generateSignature();
-        return `${API.baseUrl}?types=pic&id=${song.pic_id}&source=${song.source || "netease"}&size=300&s=${signature}`;
+        return `/proxy?types=pic&id=${encodeURIComponent(song.pic_id)}&source=${encodeURIComponent(song.source || "netease")}`;
     }
 };
 
@@ -611,13 +634,14 @@ const state = {
     currentLyricLine: -1,
     currentPlaylist: savedCurrentPlaylist, // 'online', 'search', or 'playlist'
     searchPage: 1,
-    searchKeyword: "", // 确保这里有初始值
+    searchKeyword: savedSearchKeyword,
     searchSource: savedSearchSource,
     hasMoreResults: true,
     currentSong: savedCurrentSong,
     debugMode: false,
     isSearchMode: false, // 新增：搜索模式状态
     playlistSongs: savedPlaylistSongs, // 新增：统一播放列表
+    favoriteSongs: savedFavoriteSongs,
     playMode: savedPlayMode, // 新增：播放模式 'list', 'single', 'random'
     isSwitchingTrack: false, // 新增：是否正在切换歌曲，防止重复触发
     audioHasStarted: false, // 新增：当前音源是否已开始播放，用于区分加载期错误与播放中错误
@@ -1150,6 +1174,70 @@ function savePlayerState() {
         safeSetLocalStorage("currentSong", "");
     }
     safeSetLocalStorage("currentPlaybackTime", String(state.currentPlaybackTime || 0));
+    safeSetLocalStorage("favoriteSongs", JSON.stringify(state.favoriteSongs));
+}
+
+function getSongKey(song) {
+    return `${song?.source || "netease"}:${song?.id ?? song?.url_id ?? ""}`;
+}
+
+function isFavoriteSong(song) {
+    return Boolean(song) && state.favoriteSongs.some(item => getSongKey(item) === getSongKey(song));
+}
+
+function updateFavoriteButtons() {
+    document.querySelectorAll("[data-favorite-index]").forEach(button => {
+        const collection = button.dataset.favoriteCollection === "playlist" ? state.playlistSongs : state.searchResults;
+        const song = collection[Number(button.dataset.favoriteIndex)];
+        const active = isFavoriteSong(song);
+        button.classList.toggle("is-favorite", active);
+        button.setAttribute("aria-pressed", active ? "true" : "false");
+        button.title = active ? "取消收藏" : "收藏";
+        button.innerHTML = `<i class="fa${active ? "s" : "r"} fa-heart" aria-hidden="true"></i>${button.dataset.favoriteLabel === "true" ? (active ? " 已收藏" : " 收藏") : ""}`;
+    });
+}
+
+function toggleFavorite(song) {
+    if (!song) return;
+    const index = state.favoriteSongs.findIndex(item => getSongKey(item) === getSongKey(song));
+    if (index >= 0) {
+        state.favoriteSongs.splice(index, 1);
+        showNotification("已取消收藏");
+    } else {
+        state.favoriteSongs.push({ ...song });
+        showNotification("已添加到收藏");
+    }
+    savePlayerState();
+    updateFavoriteButtons();
+}
+
+function isSongInPlaylist(song) {
+    return Boolean(song) && state.playlistSongs.some(item => getSongKey(item) === getSongKey(song));
+}
+
+function updatePlaylistAddButtons() {
+    document.querySelectorAll("[data-playlist-add-index]").forEach(button => {
+        const song = state.searchResults[Number(button.dataset.playlistAddIndex)];
+        const added = isSongInPlaylist(song);
+        button.classList.toggle("is-added", added);
+        button.title = added ? "已在播放列表" : "加入播放列表在线试听";
+        button.setAttribute("aria-label", button.title);
+        button.innerHTML = `<i class="fas ${added ? "fa-check" : "fa-list-plus"}" aria-hidden="true"></i>${added ? " 已加入" : " 试听"}`;
+    });
+}
+
+function addSearchResultToPlaylist(index) {
+    const song = state.searchResults[index];
+    if (!song) return;
+    if (!isSongInPlaylist(song)) {
+        state.playlistSongs.push(song);
+        savePlayerState();
+        renderPlaylist();
+        showNotification("已加入播放列表，可点击歌曲在线试听");
+    } else {
+        showNotification("歌曲已在播放列表中");
+    }
+    updatePlaylistAddButtons();
 }
 
 // 调试日志函数
@@ -1891,6 +1979,10 @@ function setupInteractions() {
                 event.preventDefault();
                 event.stopPropagation();
                 removeFromPlaylist(index);
+            } else if (action === "favorite") {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleFavorite(state.playlistSongs[index]);
             } else if (action === "download") {
                 event.preventDefault();
                 event.stopPropagation();
@@ -1971,6 +2063,9 @@ function setupInteractions() {
 
     buildSourceMenu();
     updateSourceLabel();
+    if (dom.searchInput && state.searchKeyword) {
+        dom.searchInput.value = state.searchKeyword;
+    }
     buildQualityMenu();
     ensureQualityMenuPortal();
     initializePlaylistEventHandlers();
@@ -2304,6 +2399,7 @@ async function performSearch(isLiveSearch = false) {
     if (!isLiveSearch) {
         state.searchPage = 1;
         state.searchKeyword = query;
+        safeSetLocalStorage("searchKeyword", query);
         state.searchSource = source;
         state.searchResults = [];
         state.hasMoreResults = true;
@@ -2311,6 +2407,7 @@ async function performSearch(isLiveSearch = false) {
         debugLog(`开始新搜索: ${query}, 来源: ${source}`);
     } else {
         state.searchKeyword = query;
+        safeSetLocalStorage("searchKeyword", query);
         state.searchSource = source;
     }
 
@@ -2441,6 +2538,15 @@ function createSearchResultItem(song, index) {
     playButton.innerHTML = '<i class="fas fa-play"></i> 播放';
     playButton.addEventListener("click", () => playSearchResult(index));
 
+    const playlistAddButton = document.createElement("button");
+    playlistAddButton.className = "action-btn playlist-add-button";
+    playlistAddButton.type = "button";
+    playlistAddButton.dataset.playlistAddIndex = String(index);
+    playlistAddButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        addSearchResultToPlaylist(index);
+    });
+
     const downloadButton = document.createElement("button");
     downloadButton.className = "action-btn download";
     downloadButton.type = "button";
@@ -2473,10 +2579,14 @@ function createSearchResultItem(song, index) {
     downloadButton.appendChild(qualityMenu);
 
     actions.appendChild(playButton);
+    actions.appendChild(playlistAddButton);
     actions.appendChild(downloadButton);
 
     item.appendChild(info);
     item.appendChild(actions);
+
+    updateFavoriteButtons();
+    updatePlaylistAddButtons();
 
     return item;
 }
@@ -2531,6 +2641,8 @@ function displaySearchResults(newItems, options = {}) {
         });
         container.appendChild(fragment);
         state.renderedSearchCount += itemsToAppend.length;
+        updateFavoriteButtons();
+        updatePlaylistAddButtons();
     }
 
     if (state.hasMoreResults) {
@@ -2678,6 +2790,9 @@ function renderPlaylist() {
     const playlistHtml = state.playlistSongs.map((song, index) =>
         `<div class="playlist-item" data-index="${index}" role="button" tabindex="0" aria-label="播放 ${song.name}">
             ${song.name} - ${Array.isArray(song.artist) ? song.artist.join(", ") : song.artist}
+            <button class="playlist-item-favorite" type="button" data-playlist-action="favorite" data-favorite-index="${index}" data-favorite-collection="playlist" title="收藏" aria-label="收藏">
+                <i class="far fa-heart" aria-hidden="true"></i>
+            </button>
             <button class="playlist-item-remove" type="button" data-playlist-action="remove" data-index="${index}" title="从播放列表移除">
                 <i class="fas fa-times"></i>
             </button>
@@ -2690,6 +2805,7 @@ function renderPlaylist() {
     dom.playlistItems.innerHTML = playlistHtml;
     savePlayerState();
     updatePlaylistHighlight();
+    updateFavoriteButtons();
     updateMobileClearPlaylistVisibility();
 }
 
@@ -2876,28 +2992,6 @@ async function playSong(song, options = {}) {
         const audioUrl = API.getSongUrl(song, quality);
         debugLog(`获取音频URL: ${audioUrl}`);
 
-        const audioData = await API.fetchJson(audioUrl);
-
-        if (!audioData || !audioData.url) {
-            const sourceName = song.source === 'kuwo' ? '酷我' : song.source === 'joox' ? 'JOOX' : '网易云';
-            throw new Error(`无法获取音频播放地址（${sourceName}音源）`);
-        }
-
-        const originalAudioUrl = audioData.url;
-        const proxiedAudioUrl = buildAudioProxyUrl(originalAudioUrl);
-        const preferredAudioUrl = preferHttpsUrl(originalAudioUrl);
-        const candidateAudioUrls = Array.from(
-            new Set([proxiedAudioUrl, preferredAudioUrl, originalAudioUrl].filter(Boolean))
-        );
-
-        const primaryAudioUrl = candidateAudioUrls[0] || originalAudioUrl;
-
-        if (proxiedAudioUrl && proxiedAudioUrl !== originalAudioUrl) {
-            debugLog(`音频地址已通过代理转换为 HTTPS: ${proxiedAudioUrl}`);
-        } else if (preferredAudioUrl && preferredAudioUrl !== originalAudioUrl) {
-            debugLog(`音频地址由 HTTP 升级为 HTTPS: ${preferredAudioUrl}`);
-        }
-
         state.currentSong = song;
         state.currentAudioUrl = null;
 
@@ -2918,6 +3012,8 @@ async function playSong(song, options = {}) {
         let lastAudioError = null;
         let usedFallbackAudio = false;
 
+        const candidateAudioUrls = [audioUrl];
+
         for (const candidateUrl of candidateAudioUrls) {
             dom.audioPlayer.src = candidateUrl;
             dom.audioPlayer.load();
@@ -2925,13 +3021,13 @@ async function playSong(song, options = {}) {
             try {
                 await waitForAudioReady(dom.audioPlayer);
                 selectedAudioUrl = candidateUrl;
-                usedFallbackAudio = candidateUrl !== primaryAudioUrl && candidateAudioUrls.length > 1;
+                usedFallbackAudio = candidateUrl !== audioUrl && candidateAudioUrls.length > 1;
                 break;
             } catch (error) {
                 lastAudioError = error;
                 console.warn('音频元数据加载异常', error);
 
-                if (candidateUrl === primaryAudioUrl && candidateAudioUrls.length > 1) {
+                if (candidateUrl === audioUrl && candidateAudioUrls.length > 1) {
                     debugLog('主音频地址加载失败，尝试使用备用地址');
                 }
             }
@@ -3246,7 +3342,8 @@ async function loadLyrics(song) {
         const lyricUrl = API.getLyric(song);
         debugLog(`获取歌词URL: ${lyricUrl}`);
 
-        const lyricData = await API.fetchJson(lyricUrl);
+        const lyricPayload = await API.fetchJson(lyricUrl);
+        const lyricData = lyricPayload?.data || lyricPayload;
 
         if (lyricData && lyricData.lyric) {
             parseLyrics(lyricData.lyric);
@@ -3413,48 +3510,19 @@ async function downloadSong(song, quality = "320") {
     try {
         showNotification("正在准备下载...");
 
-        const audioUrl = API.getSongUrl(song, quality);
-        const audioData = await API.fetchJson(audioUrl);
+        const audioStreamUrl = API.getSongUrl(song, quality);
 
-        if (audioData && audioData.url) {
-            const proxiedAudioUrl = buildAudioProxyUrl(audioData.url);
-            const preferredAudioUrl = preferHttpsUrl(audioData.url);
+        const link = document.createElement("a");
+        link.href = audioStreamUrl;
+        const preferredExtension =
+            quality === "999" ? "flac" : quality === "740" ? "ape" : "mp3";
+        link.download = `${song.name} - ${Array.isArray(song.artist) ? song.artist.join(", ") : song.artist}.${preferredExtension}`;
+        link.target = "_blank";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
 
-            if (proxiedAudioUrl !== audioData.url) {
-                debugLog(`下载链接已通过代理转换为 HTTPS: ${proxiedAudioUrl}`);
-            } else if (preferredAudioUrl !== audioData.url) {
-                debugLog(`下载链接由 HTTP 升级为 HTTPS: ${preferredAudioUrl}`);
-            }
-
-            const downloadUrl = proxiedAudioUrl || preferredAudioUrl || audioData.url;
-
-            const link = document.createElement("a");
-            link.href = downloadUrl;
-            const preferredExtension =
-                quality === "999" ? "flac" : quality === "740" ? "ape" : "mp3";
-            const fileExtension = (() => {
-                try {
-                    const url = new URL(audioData.url);
-                    const pathname = url.pathname || "";
-                    const match = pathname.match(/\.([a-z0-9]+)$/i);
-                    if (match) {
-                        return match[1];
-                    }
-                } catch (error) {
-                    console.warn("无法从下载链接中解析扩展名:", error);
-                }
-                return preferredExtension;
-            })();
-            link.download = `${song.name} - ${Array.isArray(song.artist) ? song.artist.join(", ") : song.artist}.${fileExtension}`;
-            link.target = "_blank";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            showNotification("下载已开始", "success");
-        } else {
-            throw new Error("无法获取下载地址");
-        }
+        showNotification("下载已开始", "success");
     } catch (error) {
         console.error("下载失败:", error);
         showNotification("下载失败，请稍后重试", "error");
