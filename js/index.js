@@ -595,16 +595,29 @@ const API = {
         }
     },
 
-    getSongUrl: (song, quality = "320") => {
-        if (song.source === "netease") {
-            return `https://music.163.com/song/media/outer/url?id=${encodeURIComponent(song.id)}`;
-        }
+    getSongUrl: async (song, quality = "320") => {
         const albumParam = song.source === "kugou" && song.album_id
             ? `&album_id=${encodeURIComponent(song.album_id)}`
             : "";
         const nameParam = song.name ? `&name=${encodeURIComponent(song.name)}` : "";
         const artistValue = Array.isArray(song.artist) ? song.artist.join(" / ") : song.artist;
         const artistParam = artistValue ? `&artist=${encodeURIComponent(artistValue)}` : "";
+
+        // Netease: use outer URL redirect to get HTTPS CDN URL (bypasses mixed content)
+        if (song.source === "netease" && /^\d+$/.test(String(song.id))) {
+            try {
+                const outerUrl = `https://music.163.com/song/media/outer/url?id=${encodeURIComponent(song.id)}`;
+                const resp = await fetch(outerUrl, { redirect: "follow", mode: "no-cors" });
+                if (resp.url && resp.url.startsWith("http")) {
+                    const httpsUrl = resp.url.replace(/^http:/, "https:");
+                    debugLog(`Netease CDN URL: ${httpsUrl.substring(0, 80)}`);
+                    return httpsUrl;
+                }
+            } catch (e) {
+                console.warn("Netease outer URL fetch failed, falling back to proxy", e);
+            }
+        }
+
         return `/proxy?types=audio&id=${encodeURIComponent(song.id)}&source=${encodeURIComponent(song.source || "netease")}&br=${quality}${albumParam}${nameParam}${artistParam}`;
     },
 
@@ -2994,7 +3007,7 @@ async function playSong(song, options = {}) {
         updateCurrentSongInfo(song, { loadArtwork: false });
 
         const quality = state.playbackQuality || '320';
-        const audioUrl = API.getSongUrl(song, quality);
+        const audioUrl = await API.getSongUrl(song, quality);
         debugLog(`获取音频URL: ${audioUrl}`);
 
         state.currentSong = song;
@@ -3515,7 +3528,7 @@ async function downloadSong(song, quality = "320") {
     try {
         showNotification("正在准备下载...");
 
-        const audioUrl = API.getSongUrl(song, quality);
+        const audioUrl = await API.getSongUrl(song, quality);
         const link = document.createElement("a");
         link.href = audioUrl;
         const preferredExtension =

@@ -121,7 +121,7 @@ async function fetchUpstreamWithRetry(url: URL): Promise<Response> {
 async function resolveNeteaseCdnUrl(id: string, br: string): Promise<string | null> {
   if (!/^\d+$/.test(id.trim())) return null;
 
-  // Use POST method with realIP (GET method is geo-restricted from CF)
+  // Strategy 1: enhance/player/url POST with realIP (may work for some songs)
   const apiUrl = "https://interface3.music.163.com/api/song/enhance/player/url?realIP=116.25.146.177";
   const body = new URLSearchParams({
     ids: `[${id.trim()}]`,
@@ -141,18 +141,34 @@ async function resolveNeteaseCdnUrl(id: string, br: string): Promise<string | nu
       },
       body: body.toString(),
     });
-    if (!resp.ok) return null;
-    const payload = (await resp.json()) as { data?: { url?: string | null; code?: number }[] };
-    const item = Array.isArray(payload.data) ? payload.data[0] : null;
-    if (item && typeof item.url === "string" && item.url) {
-      return item.url.replace(/^http:/, "https:");
+    if (resp.ok) {
+      const payload = (await resp.json()) as { data?: { url?: string | null; code?: number }[] };
+      const item = Array.isArray(payload.data) ? payload.data[0] : null;
+      if (item && typeof item.url === "string" && item.url) {
+        return item.url.replace(/^http:/, "https:");
+      }
     }
-    return null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timeout);
-  }
+  } catch { /* fall through */ }
+  finally { clearTimeout(timeout); }
+
+  // Strategy 2: outer URL redirect -> follow to CDN -> return HTTPS CDN URL
+  const outerUrl = `https://music.163.com/song/media/outer/url?id=${id.trim()}`;
+  const c2 = new AbortController();
+  const t2 = setTimeout(() => c2.abort(), UPSTREAM_TIMEOUT_MS);
+  try {
+    const resp = await fetch(outerUrl, {
+      signal: c2.signal,
+      redirect: "follow",
+      headers: { "User-Agent": UA_COMMON, "Referer": REF_NETEASE },
+    });
+    // resp.url = final URL after redirect (CDN)
+    if (resp.url && resp.url.startsWith("http")) {
+      return resp.url.replace(/^http:/, "https:");
+    }
+  } catch { /* ignore */ }
+  finally { clearTimeout(t2); }
+
+  return null;
 }
 
 // 酷我歌词解密常量
@@ -491,6 +507,13 @@ async function proxyAudioStream(url: URL, rangeHeader?: string | null): Promise<
     }
 
     const contentType = audioResponse.headers.get("content-type") || "audio/mpeg";
+
+    // If response is not audio (e.g. verification page), return error
+    if (!contentType.includes("audio") && !contentType.includes("octet-stream")) {
+      const text = await audioResponse.text();
+      console.warn("Non-audio response from netease:", text.substring(0, 200));
+      return jsonResponse({ error: "该歌曲暂无法播放，请更换歌曲" }, 404);
+    }
 
     const responseHeaders = new Headers();
     responseHeaders.set("Access-Control-Allow-Origin", "*");
