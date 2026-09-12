@@ -471,6 +471,20 @@ async function proxyApiRequest(url: URL): Promise<Response> {
 }
 
 async function proxyAudioStream(url: URL, rangeHeader?: string | null): Promise<Response> {
+  const source = url.searchParams.get("source") || "netease";
+  const id = url.searchParams.get("id") || "";
+
+  // Netease blocks Cloudflare Worker IPs from resolving the audio CDN URL.
+  // A media element can safely follow this HTTPS redirect from the listener's network.
+  if (source === "netease" && /^\d+$/.test(id)) {
+    const headers = createCorsHeaders();
+    headers.set("Location", `https://music.163.com/song/media/outer/url?id=${encodeURIComponent(id)}`);
+    return new Response(null, {
+      status: 302,
+      headers,
+    });
+  }
+
   let streamUrl: string;
   try {
     const resolved = await resolveStreamUrl(url);

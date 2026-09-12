@@ -399,10 +399,7 @@ function preferHttpsUrl(url) {
 
 const SOURCE_OPTIONS = [
     { value: "netease", label: "网易云音乐" },
-    { value: "kuwo", label: "酷我音乐" },
-    { value: "qq", label: "QQ音乐" },
-    { value: "joox", label: "JOOX音乐" },
-    { value: "kugou", label: "酷狗音乐" }
+    { value: "kuwo", label: "酷我音乐" }
 ];
 
 function normalizeSource(value) {
@@ -602,21 +599,6 @@ const API = {
         const nameParam = song.name ? `&name=${encodeURIComponent(song.name)}` : "";
         const artistValue = Array.isArray(song.artist) ? song.artist.join(" / ") : song.artist;
         const artistParam = artistValue ? `&artist=${encodeURIComponent(artistValue)}` : "";
-
-        // Netease: use outer URL redirect to get HTTPS CDN URL (bypasses mixed content)
-        if (song.source === "netease" && /^\d+$/.test(String(song.id))) {
-            try {
-                const outerUrl = `https://music.163.com/song/media/outer/url?id=${encodeURIComponent(song.id)}`;
-                const resp = await fetch(outerUrl, { redirect: "follow", mode: "no-cors" });
-                if (resp.url && resp.url.startsWith("http")) {
-                    const httpsUrl = resp.url.replace(/^http:/, "https:");
-                    debugLog(`Netease CDN URL: ${httpsUrl.substring(0, 80)}`);
-                    return httpsUrl;
-                }
-            } catch (e) {
-                console.warn("Netease outer URL fetch failed, falling back to proxy", e);
-            }
-        }
 
         return `/proxy?types=audio&id=${encodeURIComponent(song.id)}&source=${encodeURIComponent(song.source || "netease")}&br=${quality}${albumParam}${nameParam}${artistParam}`;
     },
