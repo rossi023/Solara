@@ -594,13 +594,7 @@ const API = {
     },
 
     getSongUrl: (song, quality = "320") => {
-        const albumParam = song.source === "kugou" && song.album_id
-            ? `&album_id=${encodeURIComponent(song.album_id)}`
-            : "";
-        const nameParam = song.name ? `&name=${encodeURIComponent(song.name)}` : "";
-        const artistValue = Array.isArray(song.artist) ? song.artist.join(" / ") : song.artist;
-        const artistParam = artistValue ? `&artist=${encodeURIComponent(artistValue)}` : "";
-        return `/proxy?types=audio&id=${encodeURIComponent(song.id)}&source=${encodeURIComponent(song.source || "netease")}&br=${quality}${albumParam}${nameParam}${artistParam}`;
+        return API.getSongUrlDirect(song, quality);
     },
 
     getSongUrlDirect: (song, quality = "320") => {
@@ -2989,7 +2983,15 @@ async function playSong(song, options = {}) {
         updateCurrentSongInfo(song, { loadArtwork: false });
 
         const quality = state.playbackQuality || '320';
-        const audioUrl = API.getSongUrl(song, quality);
+        const urlRequest = API.getSongUrl(song, quality);
+        const audioData = await API.fetchJson(urlRequest);
+        const originalAudioUrl = audioData && audioData.url ? audioData.url : null;
+        if (!originalAudioUrl) {
+            const sourceName = song.source === "kugou" ? "酷狗" : "网易云";
+            throw new Error(`无法获取播放地址（${sourceName}），该歌曲可能受版权保护或需会员`);
+        }
+        const preferredAudioUrl = preferHttpsUrl(originalAudioUrl);
+        const audioUrl = preferredAudioUrl || originalAudioUrl;
         debugLog(`获取音频URL: ${audioUrl}`);
 
         state.currentSong = song;
@@ -3510,10 +3512,15 @@ async function downloadSong(song, quality = "320") {
     try {
         showNotification("正在准备下载...");
 
-        const audioStreamUrl = API.getSongUrl(song, quality);
+        const urlRequest = API.getSongUrl(song, quality);
+        const audioData = await API.fetchJson(urlRequest);
+        const playUrl = audioData && audioData.url ? audioData.url : null;
+        if (!playUrl) {
+            throw new Error("该歌曲暂无可用音源");
+        }
 
         const link = document.createElement("a");
-        link.href = audioStreamUrl;
+        link.href = preferHttpsUrl(playUrl);
         const preferredExtension =
             quality === "999" ? "flac" : quality === "740" ? "ape" : "mp3";
         link.download = `${song.name} - ${Array.isArray(song.artist) ? song.artist.join(", ") : song.artist}.${preferredExtension}`;
