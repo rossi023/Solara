@@ -146,7 +146,73 @@ async function resolveNeteaseCdnUrl(id: string, br: string): Promise<string | nu
   }
 }
 
-// 解析音频真实可播地址（区分处理：网易云直接解析 CDN，其他源走 go-music-api）
+// 酷我歌词解密常量
+const KUWO_LRC_KEY = new TextEncoder().encode("yeelion");
+
+// 酷我取链：与 worker 同款三级降级（antiserver -> mobi 签名 -> www playUrl）
+async function resolveKuwoStreamUrl(rid: string): Promise<string | null> {
+  const cleanRid = rid.replace(/^MUSIC_/, "");
+  const toHttps = (u: string) => (u ? u.replace(/^http:/, "https:") : "");
+  const xff = () =>
+    `${Math.floor(Math.random() * 255) + 1}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
+
+  // 1. antiserver 直解
+  try {
+    const resp = await fetch(`http://antiserver.kuwo.cn/anti.s?type=convert_url&rid=MUSIC_${cleanRid}&format=mp3&response=url`, {
+      headers: { "User-Agent": UA_COMMON, "Accept": "text/plain, */*", "X-Forwarded-For": xff() },
+    });
+    if (resp.ok) {
+      const text = (await resp.text()).trim();
+      if (text && !text.startsWith("<") && /^https?:\/\//i.test(text)) return toHttps(text);
+    }
+  } catch { /* continue */ }
+
+  // 2. mobi.kuwo.cn 签名取链（与 music-lib 同款，抗限流更稳）
+  const randomID = `C_APK_guanwang_${Date.now()}${Math.floor(Math.random() * 1000000)}`;
+  const brs = ["128kmp3", "320kmp3", "flac"];
+  for (const br of brs) {
+    try {
+      const params = new URLSearchParams({
+        f: "web",
+        source: "kwplayercar_ar_6.0.0.9_B_jiakong_vh.apk",
+        from: "PC",
+        type: "convert_url_with_sign",
+        br,
+        rid: cleanRid,
+        user: randomID,
+      });
+      const resp = await fetch(`https://mobi.kuwo.cn/mobi.s?${params.toString()}`, {
+        headers: { "User-Agent": UA_COMMON, "Accept": "application/json", "X-Forwarded-For": xff() },
+      });
+      if (!resp.ok) continue;
+      const data = (await resp.json()) as { data?: { url?: string } };
+      const u = data?.data?.url || "";
+      if (u) return toHttps(u);
+    } catch { /* continue */ }
+  }
+
+  // 3. www.kuwo.cn Web 接口（伪造签名头）
+  try {
+    const resp = await fetch(`https://www.kuwo.cn/api/v1/www/music/playUrl?mid=${cleanRid}&type=music&httpsStatus=1`, {
+      headers: {
+        "User-Agent": UA_COMMON,
+        "Accept": "application/json",
+        "Secret": "kuwo_web_secret",
+        "Cookie": "kw_token=secret_token",
+        "csrf": "secret_token",
+      },
+    });
+    if (resp.ok) {
+      const data = (await resp.json()) as { data?: { url?: string } };
+      const u = data?.data?.url || "";
+      if (u) return toHttps(u);
+    }
+  } catch { /* continue */ }
+
+  return null;
+}
+
+// 解析音频真实可播地址（区分处理：网易云直接解析 CDN，酷我内联取链，其他源走 go-music-api）
 async function resolveStreamUrl(url: URL): Promise<string | null> {
   const source = url.searchParams.get("source") || "netease";
   const id = url.searchParams.get("id") || "";
@@ -155,6 +221,10 @@ async function resolveStreamUrl(url: URL): Promise<string | null> {
   if (source === "netease") {
     const resolved = await resolveNeteaseCdnUrl(id, br);
     return resolved;
+  }
+
+  if (source === "kuwo") {
+    return resolveKuwoStreamUrl(id);
   }
 
   const upstreamUrl = buildUpstreamUrl(url);
