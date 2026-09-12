@@ -107,10 +107,10 @@
                     </button>
                     <div id="sourceMenu" class="source-menu" role="listbox" aria-labelledby="sourceSelectButton"></div>
                 </div>
-                <button id="searchBtn" class="search-btn">
-                    <i class="fas fa-search"></i>
-                    <span>搜索</span>
-                </button>
+<button id="searchBtn" class="search-btn" type="button">
+                        <i class="fas fa-search"></i>
+                        <span>搜索</span>
+                    </button>
             </div>
             <div id="searchResults" class="search-results"></div>
         </div>
@@ -171,7 +171,7 @@
                     <div class="playlist-header">
                         <div class="playlist-label" aria-hidden="true">播放列表</div>
                         <div class="playlist-actions">
-                            <button class="clear-playlist-btn" id="clearPlaylistBtn" onclick="clearPlaylist()" title="清空播放列表">
+                            <button class="clear-playlist-btn" id="clearPlaylistBtn" type="button" onclick="clearPlaylist()" title="清空播放列表">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </div>
@@ -215,10 +215,10 @@
                     <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="0.8">
                 </div>
             </div>
-            <button id="loadOnlineBtn" title="聚合所有雷达，探索新音乐">
-                <span class="btn-text"><i class="fas fa-satellite-dish"></i> 探索雷达</span>
-                <span class="loader" style="display: none;"></span>
-            </button>
+<button id="loadOnlineBtn" type="button" title="聚合所有雷达，探索新音乐">
+    <span class="btn-text"><i class="fas fa-satellite-dish"></i> 探索雷达</span>
+    <span class="loader" style="display: none;"></span>
+</button>
         </div>
     </div>
 
