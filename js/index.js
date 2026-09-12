@@ -2986,7 +2986,9 @@ async function playSong(song, options = {}) {
         const quality = state.playbackQuality || '320';
         const urlRequest = API.getSongUrl(song, quality);
         const audioData = await API.fetchJson(urlRequest);
-        const originalAudioUrl = audioData && audioData.url ? audioData.url : null;
+        const originalAudioUrl = audioData && (audioData.url || (audioData.data && audioData.data.url))
+            ? (audioData.url || audioData.data.url)
+            : null;
         if (!originalAudioUrl) {
             const sourceName = song.source === "kugou" ? "酷狗" : "网易云";
             throw new Error(`无法获取播放地址（${sourceName}），该歌曲可能受版权保护或需会员`);
@@ -3515,7 +3517,9 @@ async function downloadSong(song, quality = "320") {
 
         const urlRequest = API.getSongUrl(song, quality);
         const audioData = await API.fetchJson(urlRequest);
-        const playUrl = audioData && audioData.url ? audioData.url : null;
+        const playUrl = audioData && (audioData.url || (audioData.data && audioData.data.url))
+            ? (audioData.url || audioData.data.url)
+            : null;
         if (!playUrl) {
             throw new Error("该歌曲暂无可用音源");
         }
