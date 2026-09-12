@@ -593,6 +593,10 @@ const API = {
     },
 
     getSongUrl: async (song, quality = "320") => {
+        if (song.source === "netease" && /^\d+$/.test(String(song.id))) {
+            return `https://music.163.com/song/media/outer/url?id=${encodeURIComponent(song.id)}`;
+        }
+
         const albumParam = song.source === "kugou" && song.album_id
             ? `&album_id=${encodeURIComponent(song.album_id)}`
             : "";
