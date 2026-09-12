@@ -529,17 +529,20 @@ const API = {
             const songs = Array.isArray(data) ? data : (data?.data?.songs || data?.songs || data?.data);
             if (!Array.isArray(songs)) throw new Error("搜索结果格式错误");
 
-            return songs.map(song => ({
-                id: song.id,
+            return songs.map(song => {
+                const id = String(song.id || song.url_id || "");
+                return {
+                id,
                 name: song.name,
                 artist: Array.isArray(song.artist) ? song.artist.join(" / ") : (song.artist || ""),
                 album: song.album,
                 album_id: song.album_id,
-                pic_id: song.pic_id,
-                url_id: song.url_id,
-                lyric_id: song.lyric_id,
+                pic_id: song.pic_id || id,
+                url_id: song.url_id || id,
+                lyric_id: song.lyric_id || id,
                 source: song.source,
-            }));
+                };
+            });
         } catch (error) {
             debugLog(`API错误: ${error.message}`);
             throw error;
@@ -593,8 +596,9 @@ const API = {
     },
 
     getSongUrl: async (song, quality = "320") => {
-        if (song.source === "netease" && /^\d+$/.test(String(song.id))) {
-            return `https://music.163.com/song/media/outer/url?id=${encodeURIComponent(song.id)}`;
+        const audioId = song.url_id || song.id;
+        if (song.source === "netease" && /^\d+$/.test(String(audioId))) {
+            return `https://music.163.com/song/media/outer/url?id=${encodeURIComponent(audioId)}`;
         }
 
         const albumParam = song.source === "kugou" && song.album_id
@@ -604,7 +608,12 @@ const API = {
         const artistValue = Array.isArray(song.artist) ? song.artist.join(" / ") : song.artist;
         const artistParam = artistValue ? `&artist=${encodeURIComponent(artistValue)}` : "";
 
-        return `/proxy?types=audio&id=${encodeURIComponent(song.id)}&source=${encodeURIComponent(song.source || "netease")}&br=${quality}${albumParam}${nameParam}${artistParam}`;
+        return `/proxy?types=audio&id=${encodeURIComponent(audioId)}&source=${encodeURIComponent(song.source || "netease")}&br=${quality}${albumParam}${nameParam}${artistParam}`;
+    },
+
+    getSongDownloadUrl: (song, quality = "320") => {
+        const audioId = song.url_id || song.id;
+        return `/proxy?types=audio&id=${encodeURIComponent(audioId)}&source=${encodeURIComponent(song.source || "netease")}&br=${quality}`;
     },
 
     getSongUrlDirect: (song, quality = "320") => {
@@ -3514,7 +3523,7 @@ async function downloadSong(song, quality = "320") {
     try {
         showNotification("正在准备下载...");
 
-        const audioUrl = await API.getSongUrl(song, quality);
+        const audioUrl = API.getSongDownloadUrl(song, quality);
         const link = document.createElement("a");
         link.href = audioUrl;
         const preferredExtension =

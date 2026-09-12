@@ -284,6 +284,9 @@ async function searchNeteaseInline(keyword: string, limit = 20): Promise<unknown
     console.log(`netease search "${keyword}" => ${songs.length} results`);
     return songs.map((s) => ({
       id: String(s.id),
+      url_id: String(s.id),
+      lyric_id: String(s.id),
+      pic_id: String(s.id),
       name: s.name,
       artist: s.artists?.map((a) => a.name).join(" / ") || "",
       album: s.album?.name || "",
@@ -338,6 +341,9 @@ async function searchKuwoInline(keyword: string): Promise<unknown[]> {
       if (!ridMatch || !nameMatch || onlineMatch?.[1] === "0") continue;
       songs.push({
         id: ridMatch[1],
+        url_id: ridMatch[1],
+        lyric_id: ridMatch[1],
+        pic_id: ridMatch[1],
         name: decodeHtml(nameMatch[1]),
         artist: decodeHtml(artistMatch?.[1] || ""),
         album: decodeHtml(albumMatch?.[1] || ""),
@@ -385,6 +391,9 @@ async function searchQQInline(keyword: string, limit = 20): Promise<unknown[]> {
     console.log(`qq search "${keyword}" => ${list.length} results`);
     return list.map((s) => ({
       id: s.songmid,
+      url_id: s.songmid,
+      lyric_id: s.songmid,
+      pic_id: s.songmid,
       name: s.songname,
       artist: s.singer?.map((a) => a.name).join(" / ") || "",
       album: s.albumname || "",
