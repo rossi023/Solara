@@ -154,34 +154,6 @@
         if (dom.mobileQueueToggle) {
             dom.mobileQueueToggle.addEventListener("click", () => openMobilePanelImpl("playlist"));
         }
-        const handleGlobalPointerDown = (event) => {
-            if (!document.body) {
-                return;
-            }
-            const hasOverlay = document.body.classList.contains("mobile-search-open") ||
-                document.body.classList.contains("mobile-panel-open");
-            if (!hasOverlay) {
-                return;
-            }
-
-            const target = event.target;
-            if (dom.mobilePanel && (dom.mobilePanel === target || dom.mobilePanel.contains(target))) {
-                return;
-            }
-            if (dom.searchArea && (dom.searchArea === target || dom.searchArea.contains(target))) {
-                return;
-            }
-            if (dom.playerQualityMenu && dom.playerQualityMenu.contains(target)) {
-                return;
-            }
-            if (target && typeof target.closest === "function" && target.closest(".quality-menu")) {
-                return;
-            }
-
-            closeAllMobileOverlaysImpl();
-        };
-
-        document.addEventListener("pointerdown", handleGlobalPointerDown, true);
         if (dom.searchArea) {
             dom.searchArea.setAttribute("aria-hidden", "true");
         }
