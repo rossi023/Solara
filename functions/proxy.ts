@@ -1,4 +1,4 @@
-const API_BASE_URL = "https://go-music-api.luoxi.workers.dev";
+const API_BASE_URL = "https://go-music-api-production.luoxi.workers.dev";
 const SAFE_RESPONSE_HEADERS = ["content-type", "cache-control", "etag", "expires"];
 const UPSTREAM_TIMEOUT_MS = 12000;
 const UPSTREAM_RETRIES = 2;

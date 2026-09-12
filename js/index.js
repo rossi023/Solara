@@ -482,7 +482,7 @@ const savedCurrentPlaylist = (() => {
 
 // API配置 - 修复API地址和请求方式
 const API = {
-    baseUrl: "https://go-music-api.luoxi.workers.dev",
+    baseUrl: "https://go-music-api-production.luoxi.workers.dev",
 
     generateSignature: () => {
         return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
