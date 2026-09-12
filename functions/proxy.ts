@@ -120,24 +120,33 @@ async function fetchUpstreamWithRetry(url: URL): Promise<Response> {
 // 将网易云歌曲解析为可直接播放的 CDN 直链（绕过 outer/url 的地区风控）
 async function resolveNeteaseCdnUrl(id: string, br: string): Promise<string | null> {
   if (!/^\d+$/.test(id.trim())) return null;
-  const apiUrl = new URL("https://music.163.com/api/song/enhance/player/url");
-  apiUrl.searchParams.set("ids", `[${id.trim()}]`);
-  apiUrl.searchParams.set("br", `${(parseInt(br, 10) || 320) * 1000}`);
+
+  // Use POST method with realIP (GET method is geo-restricted from CF)
+  const apiUrl = "https://interface3.music.163.com/api/song/enhance/player/url?realIP=116.25.146.177";
+  const body = new URLSearchParams({
+    ids: `[${id.trim()}]`,
+    br: `${(parseInt(br, 10) || 320) * 1000}`,
+  });
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
   try {
     const resp = await fetch(apiUrl, {
       signal: controller.signal,
+      method: "POST",
       headers: {
-        "User-Agent": UA_MOBILE,
+        "User-Agent": UA_COMMON,
         "Referer": REF_NETEASE,
+        "Content-Type": "application/x-www-form-urlencoded",
         "Cookie": "os=pc; appver=8.9.70; osver=10.2.1; channel=netease_music",
       },
+      body: body.toString(),
     });
     if (!resp.ok) return null;
     const payload = (await resp.json()) as { data?: { url?: string | null; code?: number }[] };
     const item = Array.isArray(payload.data) ? payload.data[0] : null;
-    if (item && typeof item.url === "string" && item.url) return item.url;
+    if (item && typeof item.url === "string" && item.url) {
+      return item.url.replace(/^http:/, "https:");
+    }
     return null;
   } catch {
     return null;
