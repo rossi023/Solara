@@ -149,46 +149,60 @@ async function resolveNeteaseCdnUrl(id: string, br: string): Promise<string | nu
 // 酷我歌词解密常量
 const KUWO_LRC_KEY = new TextEncoder().encode("yeelion");
 
-// 酷我取链：与 worker 同款三级降级（antiserver -> mobi 签名 -> www playUrl）
+// 酷我取链：与 worker 同款三级降级（antiserver -> mobi 签名 -> www playUrl），
+// 对限流/版权提示做多轮重试并透传酷我原始文案
 async function resolveKuwoStreamUrl(rid: string): Promise<string | null> {
   const cleanRid = rid.replace(/^MUSIC_/, "");
   const toHttps = (u: string) => (u ? u.replace(/^http:/, "https:") : "");
   const xff = () =>
     `${Math.floor(Math.random() * 255) + 1}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}.${Math.floor(Math.random() * 255)}`;
 
-  // 1. antiserver 直解
-  try {
-    const resp = await fetch(`http://antiserver.kuwo.cn/anti.s?type=convert_url&rid=MUSIC_${cleanRid}&format=mp3&response=url`, {
-      headers: { "User-Agent": UA_COMMON, "Accept": "text/plain, */*", "X-Forwarded-For": xff() },
-    });
-    if (resp.ok) {
-      const text = (await resp.text()).trim();
-      if (text && !text.startsWith("<") && /^https?:\/\//i.test(text)) return toHttps(text);
-    }
-  } catch { /* continue */ }
+  // 透传酷我侧的错误提示（如"当前音乐只在酷我最新版播放"），供前端定向提示
+  let lastMsg = "";
 
-  // 2. mobi.kuwo.cn 签名取链（与 music-lib 同款，抗限流更稳）
-  const randomID = `C_APK_guanwang_${Date.now()}${Math.floor(Math.random() * 1000000)}`;
-  const brs = ["128kmp3", "320kmp3", "flac"];
-  for (const br of brs) {
+  // 1. antiserver 直解（多轮重试）
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
-      const params = new URLSearchParams({
-        f: "web",
-        source: "kwplayercar_ar_6.0.0.9_B_jiakong_vh.apk",
-        from: "PC",
-        type: "convert_url_with_sign",
-        br,
-        rid: cleanRid,
-        user: randomID,
+      const resp = await fetch(`http://antiserver.kuwo.cn/anti.s?type=convert_url&rid=MUSIC_${cleanRid}&format=mp3&response=url`, {
+        headers: { "User-Agent": UA_COMMON, "Accept": "text/plain, */*", "X-Forwarded-For": xff() },
       });
-      const resp = await fetch(`https://mobi.kuwo.cn/mobi.s?${params.toString()}`, {
-        headers: { "User-Agent": UA_COMMON, "Accept": "application/json", "X-Forwarded-For": xff() },
-      });
-      if (!resp.ok) continue;
-      const data = (await resp.json()) as { data?: { url?: string } };
-      const u = data?.data?.url || "";
-      if (u) return toHttps(u);
+      if (resp.ok) {
+        const text = (await resp.text()).trim();
+        if (text && !text.startsWith("<") && /^https?:\/\//i.test(text)) return toHttps(text);
+        if (text && !lastMsg) lastMsg = text.slice(0, 120);
+      }
     } catch { /* continue */ }
+  }
+
+  // 2. mobi.kuwo.cn 签名取链（与 music-lib 同款，抗限流更稳），br 与整组均多轮重试
+  const randomID = `C_APK_guanwang_${Date.now()}${Math.floor(Math.random() * 1000000)}`;
+  const brs = ["320kmp3", "128kmp3", "flac"];
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const user = attempt === 0 ? randomID : `C_APK_guanwang_${Date.now() + attempt}${Math.floor(Math.random() * 1000000)}`;
+    for (const br of brs) {
+      try {
+        const params = new URLSearchParams({
+          f: "web",
+          source: "kwplayercar_ar_6.0.0.9_B_jiakong_vh.apk",
+          from: "PC",
+          type: "convert_url_with_sign",
+          br,
+          rid: cleanRid,
+          user,
+        });
+        const params2 = new URLSearchParams(params);
+        params2.set("format", "mp3");
+        const resp = await fetch(`https://mobi.kuwo.cn/mobi.s?${params2.toString()}`, {
+          headers: { "User-Agent": UA_COMMON, "Accept": "application/json", "X-Forwarded-For": xff() },
+        });
+        if (!resp.ok) continue;
+        const data = (await resp.json()) as { data?: { url?: string; msg?: string } };
+        const u = data?.data?.url || "";
+        if (u) return toHttps(u);
+        const msg = data?.data?.msg || "";
+        if (msg && !lastMsg) lastMsg = msg.slice(0, 120);
+      } catch { /* continue */ }
+    }
   }
 
   // 3. www.kuwo.cn Web 接口（伪造签名头）
@@ -203,16 +217,125 @@ async function resolveKuwoStreamUrl(rid: string): Promise<string | null> {
       },
     });
     if (resp.ok) {
-      const data = (await resp.json()) as { data?: { url?: string } };
+      const data = (await resp.json()) as { data?: { url?: string; msg?: string } };
       const u = data?.data?.url || "";
       if (u) return toHttps(u);
+      const msg = data?.data?.msg || "";
+      if (msg && !lastMsg) lastMsg = msg.slice(0, 120);
     }
   } catch { /* continue */ }
 
+  if (lastMsg) throw new Error(`kuwo: ${lastMsg}`);
   return null;
 }
 
-// 解析音频真实可播地址（区分处理：网易云直接解析 CDN，酷我内联取链，其他源走 go-music-api）
+// ==================== 内联搜索（消除 workers.dev 依赖） ====================
+
+async function searchNeteaseInline(keyword: string, limit = 20): Promise<unknown[]> {
+  const apiURL = `https://music.163.com/api/search/get?s=${encodeURIComponent(keyword)}&type=1&limit=${limit}&offset=0`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const resp = await fetch(apiURL, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": UA_COMMON,
+        "Referer": REF_NETEASE,
+        "Accept": "application/json, text/plain, */*",
+        "Cookie": "os=pc; appver=2.9.7;",
+      },
+    });
+    if (!resp.ok) {
+      console.warn(`netease search HTTP ${resp.status}`);
+      return [];
+    }
+    const data = (await resp.json()) as { result?: { songs?: { id: number; name: string; artists?: { name: string }[]; album?: { name: string; picUrl?: string }; dt?: number }[] } };
+    const songs = data.result?.songs || [];
+    console.log(`netease search "${keyword}" => ${songs.length} results`);
+    return songs.map((s) => ({
+      id: String(s.id),
+      name: s.name,
+      artist: s.artists?.map((a) => a.name).join(" / ") || "",
+      album: s.album?.name || "",
+      cover: s.album?.picUrl || "",
+      duration: Math.round((s.dt || 0) / 1000),
+      source: "netease",
+    }));
+  } catch (e) {
+    console.warn("netease search failed", e);
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function searchKuwoInline(keyword: string): Promise<unknown[]> {
+  const params = new URLSearchParams({
+    all: keyword, ft: "music", rn: "10", pn: "0",
+    rformat: "json", encoding: "utf8",
+  });
+  const url = `https://search.kuwo.cn/r.s?${params.toString()}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const resp = await fetch(url, {
+      signal: controller.signal,
+      headers: { "User-Agent": UA_COMMON, "Accept": "application/json, text/plain, */*" },
+    });
+    if (!resp.ok) {
+      console.warn(`kuwo search HTTP ${resp.status}`);
+      return [];
+    }
+    const text = await resp.text();
+    // search.kuwo.cn returns Python-style dict; split by MUSICRID to get song blocks
+    const songBlocks = text.split("'MUSICRID':'");
+    const songs: unknown[] = [];
+    const decodeHtml = (s: string) => s
+      .replace(/&nbsp;/g, " ")
+      .replace(/&#?\w+;/g, "")
+      .replace(/\\+u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+    for (let i = 1; i < songBlocks.length; i++) {
+      const block = songBlocks[i];
+      const endIdx = block.indexOf("'MUSICRID':'");
+      const songStr = endIdx > 0 ? block.substring(0, endIdx) : block;
+      const ridMatch = songStr.match(/^MUSIC_(\d+)/);
+      const nameMatch = songStr.match(/'SONGNAME':'([^']*)'/);
+      const artistMatch = songStr.match(/'ARTIST':'([^']*)'/);
+      const albumMatch = songStr.match(/'ALBUM':'([^']*)'/);
+      const durationMatch = songStr.match(/'DURATION':'(\d+)'/);
+      const picMatch = songStr.match(/'hts_MVPIC':'([^']*)'/);
+      const onlineMatch = songStr.match(/'ONLINE':'(\d+)'/);
+      if (!ridMatch || !nameMatch || onlineMatch?.[1] === "0") continue;
+      songs.push({
+        id: ridMatch[1],
+        name: decodeHtml(nameMatch[1]),
+        artist: decodeHtml(artistMatch?.[1] || ""),
+        album: decodeHtml(albumMatch?.[1] || ""),
+        cover: picMatch?.[1] || "",
+        duration: Number(durationMatch?.[1]) || 0,
+        source: "kuwo",
+      });
+    }
+    console.log(`kuwo search "${keyword}" => ${songs.length} results`);
+    return songs;
+  } catch (e) {
+    console.warn("kuwo search failed", e);
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// ==================== 搜索分发 ====================
+
+async function searchInline(keyword: string, source: string): Promise<unknown[]> {
+  if (source === "netease") return searchNeteaseInline(keyword);
+  if (source === "kuwo") return searchKuwoInline(keyword);
+  // 其他源仍走 worker（目前不可用时返回空）
+  return [];
+}
+
+// ==================== 音频流解析 ====================
 async function resolveStreamUrl(url: URL): Promise<string | null> {
   const source = url.searchParams.get("source") || "netease";
   const id = url.searchParams.get("id") || "";
@@ -248,18 +371,23 @@ async function proxyApiRequest(url: URL): Promise<Response> {
     return proxyAudioStream(url);
   }
 
-  const upstreamUrl = buildUpstreamUrl(url);
-  if (types === "search" && !upstreamUrl.searchParams.get("q")) {
-    return jsonResponse({ error: "Missing search keyword" }, 400);
+  // 内联搜索（消除 workers.dev 依赖）
+  if (types === "search") {
+    const keyword = url.searchParams.get("q") || url.searchParams.get("name") || "";
+    const source = url.searchParams.get("source") || "netease";
+    if (!keyword) return jsonResponse({ error: "Missing search keyword" }, 400);
+    const songs = await searchInline(keyword, source);
+    return jsonResponse(songs);
   }
 
+  // 其他类型仍走 worker
+  const upstreamUrl = buildUpstreamUrl(url);
   try {
     const upstreamResponse = await fetchUpstreamWithRetry(upstreamUrl);
     const payload = (await upstreamResponse.json()) as { code?: number; data?: unknown; playlist?: unknown; msg?: string };
     if (payload.code !== undefined && payload.code !== 200) {
       return jsonResponse({ error: payload.msg || "音乐接口返回错误" }, 502);
     }
-    if (types === "search") return jsonResponse((payload.data as { songs?: unknown[] })?.songs || []);
     if (types === "playlist") return jsonResponse({ playlist: payload.playlist || payload.data || {} });
     return jsonResponse(payload.data || {});
   } catch (error) {
@@ -278,6 +406,10 @@ async function proxyAudioStream(url: URL, rangeHeader?: string | null): Promise<
     streamUrl = resolved;
   } catch (error) {
     console.warn("resolve stream url failed", error);
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.startsWith("kuwo:")) {
+      return jsonResponse({ error: msg.slice(5) }, 502);
+    }
     return jsonResponse({ error: "获取音频播放地址失败，请稍后重试" }, 502);
   }
 
@@ -328,6 +460,7 @@ export async function onRequest({ request }: { request: Request }): Promise<Resp
   if (request.method === "OPTIONS") return handleOptions();
   if (request.method !== "GET" && request.method !== "HEAD") return new Response("Method not allowed", { status: 405 });
   const url = new URL(request.url);
+
   if (url.searchParams.get("types") === "audio") {
     return proxyAudioStream(url, request.headers.get("range"));
   }
