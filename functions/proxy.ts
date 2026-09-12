@@ -232,18 +232,26 @@ async function resolveKuwoStreamUrl(rid: string): Promise<string | null> {
 // ==================== 内联搜索（消除 workers.dev 依赖） ====================
 
 async function searchNeteaseInline(keyword: string, limit = 20): Promise<unknown[]> {
-  const apiURL = `https://music.163.com/api/search/get?s=${encodeURIComponent(keyword)}&type=1&limit=${limit}&offset=0`;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const resp = await fetch(apiURL, {
+    // POST method returns Chinese-localized results; GET returns irrelevant global results
+    // X-Forwarded-For with CN IP bypasses geo-based result filtering
+    const body = new URLSearchParams({
+      s: keyword, type: "1", limit: String(limit), offset: "0",
+    });
+    const resp = await fetch("https://music.163.com/api/search/get", {
       signal: controller.signal,
+      method: "POST",
       headers: {
         "User-Agent": UA_COMMON,
         "Referer": REF_NETEASE,
         "Accept": "application/json, text/plain, */*",
+        "Content-Type": "application/x-www-form-urlencoded",
         "Cookie": "os=pc; appver=2.9.7;",
+        "X-Forwarded-For": "116.25.146.177",
       },
+      body: body.toString(),
     });
     if (!resp.ok) {
       console.warn(`netease search HTTP ${resp.status}`);
@@ -328,9 +336,53 @@ async function searchKuwoInline(keyword: string): Promise<unknown[]> {
 
 // ==================== 搜索分发 ====================
 
+async function searchQQInline(keyword: string, limit = 20): Promise<unknown[]> {
+  const url = `https://c.y.qq.com/soso/fcgi-bin/client_search_cp?w=${encodeURIComponent(keyword)}&p=1&n=${limit}&format=json`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const resp = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "User-Agent": UA_COMMON,
+        "Referer": "https://y.qq.com/",
+        "Accept": "application/json, text/plain, */*",
+      },
+    });
+    if (!resp.ok) {
+      console.warn(`qq search HTTP ${resp.status}`);
+      return [];
+    }
+    const data = (await resp.json()) as { data?: { song?: { list?: {
+      songid: number; songmid: string; songname: string;
+      singer: { id: number; mid: string; name: string }[];
+      albumid: number; albummid: string; albumname: string;
+      interval: number; strMediaMid: string;
+    }[] } } };
+    const list = data.data?.song?.list || [];
+    console.log(`qq search "${keyword}" => ${list.length} results`);
+    return list.map((s) => ({
+      id: s.songmid,
+      name: s.songname,
+      artist: s.singer?.map((a) => a.name).join(" / ") || "",
+      album: s.albumname || "",
+      cover: s.albummid ? `https://y.qq.com/music/photo_new/T002R300x300M000${s.albummid}.jpg` : "",
+      duration: s.interval || 0,
+      source: "qq",
+      _mediaMid: s.strMediaMid,
+    }));
+  } catch (e) {
+    console.warn("qq search failed", e);
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function searchInline(keyword: string, source: string): Promise<unknown[]> {
   if (source === "netease") return searchNeteaseInline(keyword);
   if (source === "kuwo") return searchKuwoInline(keyword);
+  if (source === "qq") return searchQQInline(keyword);
   // 其他源仍走 worker（目前不可用时返回空）
   return [];
 }
