@@ -235,12 +235,10 @@ async function searchNeteaseInline(keyword: string, limit = 20): Promise<unknown
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    // POST method returns Chinese-localized results; GET returns irrelevant global results
-    // X-Forwarded-For with CN IP bypasses geo-based result filtering
     const body = new URLSearchParams({
       s: keyword, type: "1", limit: String(limit), offset: "0",
     });
-    const resp = await fetch("https://music.163.com/api/search/get", {
+    const resp = await fetch("https://interface3.music.163.com/api/search/get?realIP=116.25.146.177", {
       signal: controller.signal,
       method: "POST",
       headers: {
@@ -249,7 +247,6 @@ async function searchNeteaseInline(keyword: string, limit = 20): Promise<unknown
         "Accept": "application/json, text/plain, */*",
         "Content-Type": "application/x-www-form-urlencoded",
         "Cookie": "os=pc; appver=2.9.7;",
-        "X-Forwarded-For": "116.25.146.177",
       },
       body: body.toString(),
     });
