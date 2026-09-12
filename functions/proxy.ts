@@ -279,7 +279,7 @@ async function searchNeteaseInline(keyword: string, limit = 20): Promise<unknown
       console.warn(`netease search HTTP ${resp.status}`);
       return [];
     }
-    const data = (await resp.json()) as { result?: { songs?: { id: number; name: string; artists?: { name: string }[]; album?: { name: string; picUrl?: string }; dt?: number }[] } };
+    const data = (await resp.json()) as { result?: { songs?: { id: number; name: string; artists?: { name: string }[]; album?: { name: string; picUrl?: string }; dt?: number; fee?: number }[] } };
     const songs = data.result?.songs || [];
     console.log(`netease search "${keyword}" => ${songs.length} results`);
     return songs.map((s) => ({
@@ -292,6 +292,7 @@ async function searchNeteaseInline(keyword: string, limit = 20): Promise<unknown
       album: s.album?.name || "",
       cover: s.album?.picUrl || "",
       duration: Math.round((s.dt || 0) / 1000),
+      fee: s.fee ?? 0,
       source: "netease",
     }));
   } catch (e) {

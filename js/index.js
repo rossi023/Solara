@@ -540,6 +540,7 @@ const API = {
                 pic_id: song.pic_id || id,
                 url_id: song.url_id || id,
                 lyric_id: song.lyric_id || id,
+                fee: Number(song.fee || 0),
                 source: song.source,
                 };
             });
@@ -2809,7 +2810,7 @@ function renderPlaylist() {
             <button class="playlist-item-remove" type="button" data-playlist-action="remove" data-index="${index}" title="从播放列表移除">
                 <i class="fas fa-times"></i>
             </button>
-            <button class="playlist-item-download" type="button" data-playlist-action="download" data-index="${index}" title="下载">
+            <button class="playlist-item-download" type="button" data-playlist-action="download" data-index="${index}" title="${song.source === "netease" && song.fee ? "受版权或会员限制，无法完整下载" : "下载"}">
                 <i class="fas fa-download"></i>
             </button>
         </div>`
@@ -3521,6 +3522,10 @@ function scrollToCurrentLyric(element, containerOverride) {
 // 修复：下载歌曲
 async function downloadSong(song, quality = "320") {
     try {
+        if (song.source === "netease" && song.fee) {
+            showNotification("该歌曲受版权或会员限制，仅能试听；请使用网易云官方渠道下载", "error");
+            return;
+        }
         showNotification("正在准备下载...");
 
         const audioUrl = API.getSongDownloadUrl(song, quality);
